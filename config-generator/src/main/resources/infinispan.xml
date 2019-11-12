@@ -34,10 +34,12 @@
         <gsp:scriptlet>}</gsp:scriptlet>
     </jgroups>
 
+    <gsp:scriptlet>
+        
     <cache-container>
         <transport cluster="${infinispan.clusterName}" stack="${stack}"/>
     </cache-container>
-
+    </gsp:scriptlet>
     <server xmlns="urn:infinispan:server:10.0">
         <interfaces>
             <interface name="public">
@@ -80,17 +82,21 @@
         <endpoints socket-binding="default" security-realm="default">
             <gsp:scriptlet>if (endpoints.hotrod.enabled) {</gsp:scriptlet>
             <hotrod-connector name="hotrod" >
+                <gsp:scriptlet>if (endpoints.hotrod.auth) {</gsp:scriptlet>
                 <authentication security-realm="default">
                     <sasl mechanisms="SCRAM-SHA-512 SCRAM-SHA-384 SCRAM-SHA-256 SCRAM-SHA-1 DIGEST-SHA-512 DIGEST-SHA-384 DIGEST-SHA-256 DIGEST-SHA DIGEST-MD5 CRAM-MD5 PLAIN" qop="${endpoints.hotrod.qop}" server-name="${endpoints.hotrod.serverName}">
                         <property name="com.sun.security.sasl.digest.realm">default</property>
                     </sasl>
                 </authentication>
+                <gsp:scriptlet>}</gsp:scriptlet>
             </hotrod-connector>
             <gsp:scriptlet>}</gsp:scriptlet>
 
             <gsp:scriptlet>if (endpoints.rest.enabled) {</gsp:scriptlet>
             <rest-connector name="rest">
+                <gsp:scriptlet>if (endpoints.rest.auth) {</gsp:scriptlet>
                 <authentication mechanisms="DIGEST" security-realm="default"/>
+                <gsp:scriptlet>}</gsp:scriptlet>
             </rest-connector>
             <gsp:scriptlet>}</gsp:scriptlet>
 
