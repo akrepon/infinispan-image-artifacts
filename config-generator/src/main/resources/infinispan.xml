@@ -34,12 +34,10 @@
         <gsp:scriptlet>}</gsp:scriptlet>
     </jgroups>
 
-    <gsp:scriptlet>
-        
     <cache-container>
         <transport cluster="${infinispan.clusterName}" stack="${stack}"/>
     </cache-container>
-    </gsp:scriptlet>
+
     <server xmlns="urn:infinispan:server:10.0">
         <interfaces>
             <interface name="public">
