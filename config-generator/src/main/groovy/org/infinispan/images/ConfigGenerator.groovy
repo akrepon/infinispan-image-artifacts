@@ -4,6 +4,7 @@ package org.infinispan.images
 import groovy.text.SimpleTemplateEngine
 import groovy.text.TemplateEngine
 import groovy.text.XmlTemplateEngine
+import groovy.xml.XmlUtil
 import org.yaml.snakeyaml.Yaml
 
 import java.security.MessageDigest
@@ -29,8 +30,12 @@ static void exec(String cmd) {
     if (exitValue) System.exit exitValue
 }
 
-static void proccessXmlTemplate(String templateName, String dest, Map binding) {
+static void processXmlTemplate(String templateName, String dest, Map binding) {
     processTemplate new XmlTemplateEngine(), templateName, dest, binding
+}
+
+static void processXmlTemplate(InputStream template, String dest, Map binding) {
+    processTemplate new XmlTemplateEngine(), template, dest, binding
 }
 
 static void processPropertiesTemplate(String templateName, String dest, Map binding) {
@@ -38,15 +43,18 @@ static void processPropertiesTemplate(String templateName, String dest, Map bind
 }
 
 static void processTemplate(TemplateEngine engine, String templateName, String dest, Map binding) {
-    String template = ConfigGenerator.classLoader.getResourceAsStream(templateName).text
-    engine.createTemplate(template)
+    processTemplate engine, ConfigGenerator.classLoader.getResourceAsStream(templateName), dest, binding
+}
+
+static void processTemplate(TemplateEngine engine, InputStream template, String dest, Map binding) {
+    engine.createTemplate(template.text)
             .make(binding)
             .writeTo(new File(dest).newWriter())
 }
 
 static void configureKeystore(ks, String outputDir) {
     if (!ks.path?.trim() && !ks.crtPath?.trim()) {
-        if ( ks.selfSignCert) {
+        if (ks.selfSignCert) {
             ks.password = "infinispan"
             ks.path = "${outputDir}selfsigned_keystore.p12"
             ks.alias = "server"
@@ -76,7 +84,7 @@ static void configureKeystore(ks, String outputDir) {
         exec "openssl pkcs12 -export -inkey ${crtSrc}tls.key -in ${crtSrc}tls.crt -out ${ksPkcs} -name ${ks.alias} -password pass:${ks.password}"
 
         exec "keytool -importkeystore -noprompt -srckeystore ${ksPkcs} -srcstoretype pkcs12 -srcstorepass ${ks.password} -srcalias ${ks.alias} " +
-            "-destalias ${ks.alias} -destkeystore ${ks.path} -deststoretype pkcs12 -storepass ${ks.password}"
+                "-destalias ${ks.alias} -destkeystore ${ks.path} -deststoretype pkcs12 -storepass ${ks.password}"
     }
 }
 
@@ -105,7 +113,17 @@ static void processIdentities(Map identities, String outputDir) {
     processCredentials identities.credentials, outputDir
 }
 
-if (args.length < 2) printErrorAndExit 'Usage: OUTPUT_DIR IDENTITIES_YAML <CONFIG_YAML>'
+static void processInfinispanConfig(String destDir, Map configYaml, String cacheConfigXml) {
+    def xmlParser = new XmlParser()
+    def infinispanConfig = xmlParser.parse(ConfigGenerator.classLoader.getResourceAsStream("infinispan.xml"))
+    if (cacheConfigXml) {
+        def cacheConfig = xmlParser.parseText(cacheConfigXml)
+        infinispanConfig.'cache-container'[0].replaceNode(cacheConfig)
+    }
+    processXmlTemplate new ByteArrayInputStream(XmlUtil.serialize(infinispanConfig).bytes), destDir, configYaml
+}
+
+if (args.length < 2) printErrorAndExit 'Usage: OUTPUT_DIR IDENTITIES_YAML <CONFIG_YAML> <CONFIG_CACHE_XML>'
 
 def outputDir = addSeparator args[0]
 Map identitiesYaml = new Yaml().load(new File(args[1]).newInputStream())
@@ -118,17 +136,18 @@ processIdentities identitiesYaml, outputDir
 defaultConfig.jgroups.bindAddress = InetAddress.localHost.hostAddress
 
 // If no user config then use defaults, otherwise load user config and add default values for missing elements
-Map configYaml = args.length == 2 ? defaultConfig : mergeMaps(defaultConfig, new Yaml().load(new File(args[2]).newInputStream()))
+Map configYaml = args.length == 2 || args[2].empty ? defaultConfig : mergeMaps(defaultConfig, new Yaml().load(new File(args[2]).newInputStream()))
 
 configureKeystore configYaml.keystore, outputDir
 // Generate JGroups stack files
 def transport = configYaml.jgroups.transport
-proccessXmlTemplate "jgroups-${transport}.xml", "${outputDir}jgroups-${transport}.xml", configYaml
-if (configYaml.xsite?.backups) proccessXmlTemplate "jgroups-relay.xml", "${outputDir}jgroups-relay.xml", configYaml
+processXmlTemplate "jgroups-${transport}.xml", "${outputDir}jgroups-${transport}.xml", configYaml
+if (configYaml.xsite?.backups) processXmlTemplate "jgroups-relay.xml", "${outputDir}jgroups-relay.xml", configYaml
 
+def cacheConfig = args.length == 4 && !args[3].empty ? new File(args[3]).text : null
 
 // Generate Infinispan configuration
-proccessXmlTemplate 'infinispan.xml', "${outputDir}infinispan.xml", configYaml
+processInfinispanConfig "${outputDir}infinispan.xml", configYaml, cacheConfig
 
 // Generate Logging configuration
 processPropertiesTemplate 'logging.properties', "${outputDir}logging.properties", configYaml

@@ -3,12 +3,14 @@ infinispan:
 endpoints:
   hotrod:
     enabled: true
+    auth: true
     qop: auth
     serverName: infinispan
   memcached:
     enabled: false
   rest:
     enabled: true
+    auth: true
 jgroups:
   transport: tcp
   dnsPing:
